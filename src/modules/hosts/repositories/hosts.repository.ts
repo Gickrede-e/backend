@@ -86,26 +86,28 @@ export class HostsRepository implements ICrud<HostsEntity> {
         uuid,
         ...data
     }: Partial<Omit<HostsEntity, 'nodes' | 'excludedInternalSquads'>>): Promise<HostsEntity> {
+        const { configProfileInboundMappings: _, configProfileInboundUuids, ...updateData } = data;
+
         const result = await this.prisma.tx.hosts.update({
             where: {
                 uuid,
             },
             data: {
-                ...data,
-                xHttpExtraParams: data.xHttpExtraParams as Prisma.InputJsonValue,
-                muxParams: data.muxParams as Prisma.InputJsonValue,
-                sockoptParams: data.sockoptParams as Prisma.InputJsonValue,
+                ...updateData,
+                xHttpExtraParams: updateData.xHttpExtraParams as Prisma.InputJsonValue,
+                muxParams: updateData.muxParams as Prisma.InputJsonValue,
+                sockoptParams: updateData.sockoptParams as Prisma.InputJsonValue,
             },
             include: INCLUDE_RELATED,
         });
 
-        if (data.configProfileInboundUuid || data.configProfileInboundUuids) {
+        if (updateData.configProfileInboundUuid || configProfileInboundUuids) {
             await this.replaceHostInbounds(
                 uuid!,
-                data.configProfileInboundUuids?.length
-                    ? data.configProfileInboundUuids
-                    : data.configProfileInboundUuid
-                      ? [data.configProfileInboundUuid]
+                configProfileInboundUuids?.length
+                    ? configProfileInboundUuids
+                    : updateData.configProfileInboundUuid
+                      ? [updateData.configProfileInboundUuid]
                       : [],
             );
         }
