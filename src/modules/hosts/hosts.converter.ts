@@ -6,8 +6,20 @@ import { UniversalConverter } from '@common/converter/universalConverter';
 
 import { HostsEntity } from './entities/hosts.entity';
 
-const modelToEntity = (model: Hosts): HostsEntity => {
-    return new HostsEntity(model);
+type HostsWithRelations = Hosts & {
+    hostInbounds?: { configProfileInboundUuid: string; configProfileInbounds: { configProfileUuid: string } }[];
+};
+
+const modelToEntity = (model: HostsWithRelations): HostsEntity => {
+    return new HostsEntity({
+        ...model,
+        configProfileInboundUuids: model.hostInbounds?.map((i) => i.configProfileInboundUuid) || [],
+        configProfileInboundMappings:
+            model.hostInbounds?.map((i) => ({
+                configProfileInboundUuid: i.configProfileInboundUuid,
+                configProfileUuid: i.configProfileInbounds.configProfileUuid,
+            })) || [],
+    });
 };
 
 const entityToModel = (entity: HostsEntity): Hosts => {

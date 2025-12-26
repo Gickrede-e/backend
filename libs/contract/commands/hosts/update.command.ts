@@ -17,11 +17,14 @@ export namespace UpdateHostCommand {
     export const RequestSchema = HostsSchema.pick({
         uuid: true,
     }).extend({
-        inbound: z
-            .object({
-                configProfileUuid: z.string().uuid(),
-                configProfileInboundUuid: z.string().uuid(),
-            })
+        inbounds: z
+            .array(
+                z.object({
+                    configProfileUuid: z.string().uuid(),
+                    configProfileInboundUuid: z.string().uuid(),
+                }),
+            )
+            .min(1)
             .optional(),
         remark: z
             .string({

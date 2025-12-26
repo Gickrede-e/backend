@@ -19,10 +19,14 @@ export const HostsSchema = z.object({
     muxParams: z.nullable(z.unknown()),
     sockoptParams: z.nullable(z.unknown()),
 
-    inbound: z.object({
-        configProfileUuid: z.string().uuid().nullable(),
-        configProfileInboundUuid: z.string().uuid().nullable(),
-    }),
+    inbounds: z
+        .array(
+            z.object({
+                configProfileUuid: z.string().uuid(),
+                configProfileInboundUuid: z.string().uuid(),
+            }),
+        )
+        .default([]),
 
     serverDescription: z.string().max(30).nullable(),
     tag: z.string().nullable(),

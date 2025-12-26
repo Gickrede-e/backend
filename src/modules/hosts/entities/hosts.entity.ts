@@ -32,6 +32,8 @@ export class HostsEntity implements Hosts {
 
     configProfileUuid: string | null;
     configProfileInboundUuid: string | null;
+    configProfileInboundUuids: string[];
+    configProfileInboundMappings?: { configProfileInboundUuid: string; configProfileUuid: string }[];
 
     xrayJsonTemplateUuid: string | null;
 
@@ -45,5 +47,13 @@ export class HostsEntity implements Hosts {
 
     constructor(data: Partial<Hosts>) {
         Object.assign(this, data);
+
+        if (!this.configProfileInboundUuids) {
+            this.configProfileInboundUuids = [];
+        }
+
+        if (!this.configProfileInboundMappings) {
+            this.configProfileInboundMappings = [];
+        }
     }
 }
