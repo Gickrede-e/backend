@@ -82,22 +82,39 @@ export class HostsService {
                 serverDescription = undefined;
             }
 
-            const { inbound: inboundObj, nodes, excludedInternalSquads, ...rest } = dto;
+            const { inbounds, nodes, excludedInternalSquads, ...rest } = dto;
 
-            const configProfile = await this.queryBus.execute(
-                new GetConfigProfileByUuidQuery(inboundObj.configProfileUuid),
-            );
+            const validatedInbounds = [] as { configProfileUuid: string; configProfileInboundUuid: string }[];
+            const configProfileCache = new Map<string, Awaited<ReturnType<typeof this.queryBus.execute>>>();
 
-            if (!configProfile.isOk) {
-                return fail(ERRORS.CONFIG_PROFILE_NOT_FOUND);
+            for (const inbound of inbounds) {
+                if (!configProfileCache.has(inbound.configProfileUuid)) {
+                    const configProfile = await this.queryBus.execute(
+                        new GetConfigProfileByUuidQuery(inbound.configProfileUuid),
+                    );
+                    configProfileCache.set(inbound.configProfileUuid, configProfile);
+                }
+
+                const configProfile = configProfileCache.get(inbound.configProfileUuid)!;
+
+                if (!configProfile.isOk) {
+                    return fail(ERRORS.CONFIG_PROFILE_NOT_FOUND);
+                }
+
+                const configProfileInbound = configProfile.response.inbounds.find(
+                    (profileInbound) => profileInbound.uuid === inbound.configProfileInboundUuid,
+                );
+                if (!configProfileInbound) {
+                    return fail(ERRORS.CONFIG_PROFILE_INBOUND_NOT_FOUND_IN_SPECIFIED_PROFILE);
+                }
+
+                validatedInbounds.push({
+                    configProfileUuid: inbound.configProfileUuid,
+                    configProfileInboundUuid: inbound.configProfileInboundUuid,
+                });
             }
 
-            const configProfileInbound = configProfile.response.inbounds.find(
-                (inbound) => inbound.uuid === inboundObj.configProfileInboundUuid,
-            );
-            if (!configProfileInbound) {
-                return fail(ERRORS.CONFIG_PROFILE_INBOUND_NOT_FOUND_IN_SPECIFIED_PROFILE);
-            }
+            const primaryInbound = validatedInbounds[0];
 
             const hostEntity = new HostsEntity({
                 ...rest,
@@ -105,8 +122,13 @@ export class HostsService {
                 xHttpExtraParams,
                 muxParams,
                 sockoptParams,
-                configProfileUuid: configProfile.response.uuid,
-                configProfileInboundUuid: configProfileInbound.uuid,
+                configProfileUuid: primaryInbound.configProfileUuid,
+                configProfileInboundUuid: primaryInbound.configProfileInboundUuid,
+                configProfileInboundUuids: validatedInbounds.map((inbound) => inbound.configProfileInboundUuid),
+                configProfileInboundMappings: validatedInbounds.map((inbound) => ({
+                    configProfileInboundUuid: inbound.configProfileInboundUuid,
+                    configProfileUuid: inbound.configProfileUuid,
+                })),
                 serverDescription,
             });
 
@@ -143,7 +165,7 @@ export class HostsService {
 
     public async updateHost(dto: UpdateHostRequestDto): Promise<TResult<HostsEntity>> {
         try {
-            const { inbound: inboundObj, nodes, excludedInternalSquads, ...rest } = dto;
+            const { inbounds, nodes, excludedInternalSquads, ...rest } = dto;
 
             const host = await this.hostsRepository.findByUUID(dto.uuid);
             if (!host) return fail(ERRORS.HOST_NOT_FOUND);
@@ -208,25 +230,51 @@ export class HostsService {
 
             let configProfileUuid: string | undefined;
             let configProfileInboundUuid: string | undefined;
-            if (inboundObj) {
-                const configProfile = await this.queryBus.execute(
-                    new GetConfigProfileByUuidQuery(inboundObj.configProfileUuid),
-                );
+            let configProfileInboundUuids: string[] | undefined;
+            let configProfileInboundMappings:
+                | { configProfileInboundUuid: string; configProfileUuid: string }[]
+                | undefined;
 
-                if (!configProfile.isOk) {
-                    return fail(ERRORS.CONFIG_PROFILE_NOT_FOUND);
+            if (inbounds) {
+                const validatedInbounds = [] as { configProfileUuid: string; configProfileInboundUuid: string }[];
+                const configProfileCache = new Map<string, Awaited<ReturnType<typeof this.queryBus.execute>>>();
+
+                for (const inbound of inbounds) {
+                    if (!configProfileCache.has(inbound.configProfileUuid)) {
+                        const configProfile = await this.queryBus.execute(
+                            new GetConfigProfileByUuidQuery(inbound.configProfileUuid),
+                        );
+                        configProfileCache.set(inbound.configProfileUuid, configProfile);
+                    }
+
+                    const configProfile = configProfileCache.get(inbound.configProfileUuid)!;
+
+                    if (!configProfile.isOk) {
+                        return fail(ERRORS.CONFIG_PROFILE_NOT_FOUND);
+                    }
+
+                    const configProfileInbound = configProfile.response.inbounds.find(
+                        (profileInbound) => profileInbound.uuid === inbound.configProfileInboundUuid,
+                    );
+
+                    if (!configProfileInbound) {
+                        return fail(ERRORS.CONFIG_PROFILE_INBOUND_NOT_FOUND_IN_SPECIFIED_PROFILE);
+                    }
+
+                    validatedInbounds.push({
+                        configProfileUuid: inbound.configProfileUuid,
+                        configProfileInboundUuid: inbound.configProfileInboundUuid,
+                    });
                 }
 
-                const configProfileInbound = configProfile.response.inbounds.find(
-                    (inbound) => inbound.uuid === inboundObj.configProfileInboundUuid,
-                );
-
-                if (!configProfileInbound) {
-                    return fail(ERRORS.CONFIG_PROFILE_INBOUND_NOT_FOUND_IN_SPECIFIED_PROFILE);
-                }
-
-                configProfileUuid = configProfile.response.uuid;
-                configProfileInboundUuid = configProfileInbound.uuid;
+                const primaryInbound = validatedInbounds[0];
+                configProfileUuid = primaryInbound.configProfileUuid;
+                configProfileInboundUuid = primaryInbound.configProfileInboundUuid;
+                configProfileInboundUuids = validatedInbounds.map((inbound) => inbound.configProfileInboundUuid);
+                configProfileInboundMappings = validatedInbounds.map((inbound) => ({
+                    configProfileInboundUuid: inbound.configProfileInboundUuid,
+                    configProfileUuid: inbound.configProfileUuid,
+                }));
             }
 
             if (nodes !== undefined) {
@@ -250,6 +298,8 @@ export class HostsService {
                 sockoptParams,
                 configProfileUuid,
                 configProfileInboundUuid,
+                configProfileInboundUuids,
+                configProfileInboundMappings,
                 serverDescription,
             });
 

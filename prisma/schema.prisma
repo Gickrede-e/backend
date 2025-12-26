@@ -298,10 +298,22 @@ model Hosts {
   configProfiles        ConfigProfiles?        @relation(fields: [configProfileUuid], references: [uuid], onDelete: SetNull)
   xrayJsonTemplate      SubscriptionTemplate?  @relation(fields: [xrayJsonTemplateUuid], references: [uuid], onDelete: SetNull)
 
+  hostInbounds          HostInbounds[]
   nodes                  HostsToNodes[]
   excludedInternalSquads InternalSquadHostExclusions[]
 
   @@map("hosts")
+}
+
+model HostInbounds {
+  hostUuid               String @map("host_uuid") @db.Uuid
+  configProfileInboundUuid String @map("config_profile_inbound_uuid") @db.Uuid
+
+  host               Hosts                 @relation(fields: [hostUuid], references: [uuid], onDelete: Cascade)
+  configProfileInbounds ConfigProfileInbounds @relation(fields: [configProfileInboundUuid], references: [uuid], onDelete: Cascade)
+
+  @@id([hostUuid, configProfileInboundUuid])
+  @@map("host_inbounds")
 }
 
 model InternalSquadHostExclusions {

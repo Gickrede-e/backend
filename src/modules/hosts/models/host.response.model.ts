@@ -33,10 +33,10 @@ export class HostResponseModel {
     public keepSniBlank: boolean;
     public vlessRouteId: number | null;
 
-    public inbound: {
-        configProfileUuid: string | null;
-        configProfileInboundUuid: string | null;
-    };
+    public inbounds: {
+        configProfileUuid: string;
+        configProfileInboundUuid: string;
+    }[];
 
     public nodes: string[];
 
@@ -73,10 +73,16 @@ export class HostResponseModel {
         this.overrideSniFromAddress = data.overrideSniFromAddress;
         this.keepSniBlank = data.keepSniBlank;
         this.vlessRouteId = data.vlessRouteId;
-        this.inbound = {
-            configProfileUuid: data.configProfileUuid,
-            configProfileInboundUuid: data.configProfileInboundUuid,
-        };
+        this.inbounds = data.configProfileInboundMappings?.length
+            ? data.configProfileInboundMappings
+            : data.configProfileInboundUuid && data.configProfileUuid
+              ? [
+                    {
+                        configProfileInboundUuid: data.configProfileInboundUuid,
+                        configProfileUuid: data.configProfileUuid,
+                    },
+                ]
+              : [];
 
         this.nodes = data.nodes.map((node) => node.nodeUuid);
         this.excludedInternalSquads = data.excludedInternalSquads.map(

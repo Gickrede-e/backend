@@ -25,6 +25,16 @@ const INCLUDE_RELATED = {
             squadUuid: true,
         },
     },
+    hostInbounds: {
+        select: {
+            configProfileInboundUuid: true,
+            configProfileInbounds: {
+                select: {
+                    configProfileUuid: true,
+                },
+            },
+        },
+    },
 } as const;
 
 @Injectable()
@@ -47,7 +57,18 @@ export class HostsRepository implements ICrud<HostsEntity> {
             include: INCLUDE_RELATED,
         });
 
-        return this.hostsConverter.fromPrismaModelToEntity(result);
+        const host = this.hostsConverter.fromPrismaModelToEntity(result);
+
+        await this.replaceHostInbounds(
+            result.uuid,
+            entity.configProfileInboundUuids?.length
+                ? entity.configProfileInboundUuids
+                : entity.configProfileInboundUuid
+                  ? [entity.configProfileInboundUuid]
+                  : [],
+        );
+
+        return this.findByUUID(host.uuid) as Promise<HostsEntity>;
     }
 
     public async findByUUID(uuid: string): Promise<HostsEntity | null> {
@@ -65,20 +86,33 @@ export class HostsRepository implements ICrud<HostsEntity> {
         uuid,
         ...data
     }: Partial<Omit<HostsEntity, 'nodes' | 'excludedInternalSquads'>>): Promise<HostsEntity> {
+        const { configProfileInboundMappings: _, configProfileInboundUuids, ...updateData } = data;
+
         const result = await this.prisma.tx.hosts.update({
             where: {
                 uuid,
             },
             data: {
-                ...data,
-                xHttpExtraParams: data.xHttpExtraParams as Prisma.InputJsonValue,
-                muxParams: data.muxParams as Prisma.InputJsonValue,
-                sockoptParams: data.sockoptParams as Prisma.InputJsonValue,
+                ...updateData,
+                xHttpExtraParams: updateData.xHttpExtraParams as Prisma.InputJsonValue,
+                muxParams: updateData.muxParams as Prisma.InputJsonValue,
+                sockoptParams: updateData.sockoptParams as Prisma.InputJsonValue,
             },
             include: INCLUDE_RELATED,
         });
 
-        return this.hostsConverter.fromPrismaModelToEntity(result);
+        if (updateData.configProfileInboundUuid || configProfileInboundUuids) {
+            await this.replaceHostInbounds(
+                uuid!,
+                configProfileInboundUuids?.length
+                    ? configProfileInboundUuids
+                    : updateData.configProfileInboundUuid
+                      ? [updateData.configProfileInboundUuid]
+                      : [],
+            );
+        }
+
+        return this.findByUUID(result.uuid) as Promise<HostsEntity>;
     }
 
     public async findByCriteria(
@@ -142,6 +176,10 @@ export class HostsRepository implements ICrud<HostsEntity> {
                 configProfileInboundUuid,
             },
         });
+
+        for (const hostUuid of uuids) {
+            await this.replaceHostInbounds(hostUuid, [configProfileInboundUuid]);
+        }
         return !!result;
     }
 
@@ -161,10 +199,11 @@ export class HostsRepository implements ICrud<HostsEntity> {
         const hosts = await this.qb.kysely
             .selectFrom('hosts')
             .distinct()
+            .innerJoin('hostInbounds', 'hostInbounds.hostUuid', 'hosts.uuid')
             .innerJoin(
                 'internalSquadInbounds',
                 'internalSquadInbounds.inboundUuid',
-                'hosts.configProfileInboundUuid',
+                'hostInbounds.configProfileInboundUuid',
             )
             .innerJoin(
                 'internalSquadMembers',
@@ -174,7 +213,7 @@ export class HostsRepository implements ICrud<HostsEntity> {
             .innerJoin(
                 'configProfileInbounds',
                 'configProfileInbounds.uuid',
-                'hosts.configProfileInboundUuid',
+                'hostInbounds.configProfileInboundUuid',
             )
             .leftJoin(
                 'subscriptionTemplates',
@@ -204,6 +243,7 @@ export class HostsRepository implements ICrud<HostsEntity> {
 
             .select([
                 'configProfileInbounds.rawInbound',
+                'configProfileInbounds.uuid as configProfileInboundUuid',
                 'configProfileInbounds.tag as inboundTag',
                 'subscriptionTemplates.templateJson as xrayJsonTemplate',
             ])
@@ -285,6 +325,24 @@ export class HostsRepository implements ICrud<HostsEntity> {
         const result = await this.prisma.tx.internalSquadHostExclusions.deleteMany({
             where: { hostUuid },
         });
+        return !!result;
+    }
+
+    public async replaceHostInbounds(hostUuid: string, inbounds: string[]): Promise<boolean> {
+        await this.prisma.tx.hostInbounds.deleteMany({ where: { hostUuid } });
+
+        if (inbounds.length === 0) {
+            return true;
+        }
+
+        const result = await this.prisma.tx.hostInbounds.createMany({
+            data: inbounds.map((inboundUuid) => ({
+                hostUuid,
+                configProfileInboundUuid: inboundUuid,
+            })),
+            skipDuplicates: true,
+        });
+
         return !!result;
     }
 }
